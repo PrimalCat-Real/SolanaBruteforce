@@ -1,8 +1,10 @@
+import json
 import random
 import time
-from solana.keypair import Keypair
+# from solana.keypair import Keypair
 from solana.rpc.api import Client
-from solana.keypair import Keypair
+from solders.keypair import Keypair
+from solders.rpc.responses import GetBalanceResp
 from mnemonic import Mnemonic
 client = Client("https://api.mainnet-beta.solana.com")
 
@@ -21,32 +23,73 @@ words = ['abandon', 'ability', 'able', 'about', 'above', 'absent', 'absorb', 'ab
          'version', 'very', 'vessel', 'veteran', 'viable', 'vibrant', 'vicious', 'victory', 'video', 'view', 'village', 'vintage', 'violin', 'virtual', 'virus', 'visa', 'visit', 'visual', 'vital', 'vivid', 'vocal', 'voice', 'void', 'volcano', 'volume', 'vote', 'voyage', 'wage', 'wagon', 'wait', 'walk', 'wall', 'walnut', 'want', 'warfare', 'warm', 'warrior', 'wash', 'wasp', 'waste', 'water', 'wave', 'way', 'wealth', 'weapon', 'wear', 'weasel', 'weather', 'web', 'wedding', 'weekend', 'weird', 'welcome', 'west', 'wet', 'whale', 'what', 'wheat', 'wheel', 'when', 'where', 'whip', 'whisper', 'wide', 'width', 'wife', 'wild', 'will', 'win', 'window', 'wine', 'wing', 'wink', 'winner', 'winter', 'wire', 'wisdom', 'wise', 'wish', 'witness', 'wolf', 'woman', 'wonder', 'wood', 'wool', 'word', 'work', 'world', 'worry', 'worth', 'wrap', 'wreck', 'wrestle', 'wrist', 'write', 'wrong', 'yard', 'year', 'yellow', 'you', 'young', 'youth', 'zebra', 'zero', 'zone', 'zoo']
 
 
-def get_random_words_string(list, number):
-    return ' '.join(random.sample(list, number))
+def get_random_words_string(word_list, number):
+    return ' '.join(random.sample(word_list, number))
 
 
-def get_random_words(list, number):
-    return random.sample(list, number)
+def generate_keypair_from_seed(seed: bytes):
+    keypair = Keypair.from_seed(seed[:32])  # Use the first 32 bytes as seed
+    return keypair
+
+def check_balance(public_key):
+
+    try:
+        response = client.get_balance(public_key)
+        
+        if isinstance(response, GetBalanceResp):
+            balance = response.value
+            # print(f"Balance for {public_key}: {balance / 10**9} SOL")
+            return balance
+        else:
+            print("Error: Unexpected RPC response format")
+            return 0
+    except Exception as e:
+        print(f"Error checking balance: {e}")
+        return 0
+    
+def save_result_to_file(filename, results):
+    try:
+        with open(filename, "w", encoding="utf-8") as file:
+            json.dump(results, file, indent=4, ensure_ascii=False)
+        print(f"Results saved to file: {filename}")
+    except Exception as e:
+        print(f"Error saving to file: {e}")
 
 
 def start_gen_words():
+    results = []
     mnemo = Mnemonic("english")
+    filename = "solana_results.json"
     for i in range(0, 1_000_000_000):
-        seed = mnemo.to_seed(get_random_words_string(words, 12))
-        keypair = Keypair.from_secret_key(seed)
-        acc_info = client.get_balance(keypair.public_key)
-        if(acc_info["result"]["value"] > 0):
-            print(keypair.public_key, "balance",
-                  acc_info["result"]["value"], "key", keypair.seed, keypair)
-            break
-        else:
-            # pass
-            print(i, "empty", keypair.public_key,
-                  "balance", acc_info["result"]["value"])
-        time.sleep(0.2)
+        random_mnemonic = get_random_words_string(words, 12)
+        seed = mnemo.to_seed(random_mnemonic)
+        # signing_key, public_key = generate_keypair_from_seed(seed)
+        keypair = generate_keypair_from_seed(seed)
+
+        secret_seed = keypair.secret()
+        public_key = bytes(keypair.pubkey())
+        full_private_key = list(secret_seed + public_key)
+
+        public_key_str = keypair.pubkey()
+        balance = check_balance(public_key_str)
+        
+        if balance > 0:
+            print("Found a wallet with a balance!")
+            print("Mnemonic:", random_mnemonic)
+            print("Private Key (64-byte array):", full_private_key)
+            print("Public Key:", public_key_str)
+            results.append({
+                "mnemonic": random_mnemonic,
+                "balance_sol": balance / 10**9,
+                "public_key": public_key_str,
+                "private_key": full_private_key
+            })
+            save_result_to_file(filename, results)
+
+        time.sleep(0.15)
 
     print("done")
-    start_gen_words()
+    # start_gen_words()
 
 
 if(__name__ == "__main__"):
